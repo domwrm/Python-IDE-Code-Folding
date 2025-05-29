@@ -1,6 +1,6 @@
 ### Change Log: 20250528
 
-
+Added implementation for parsing code with `find_foldable_regions` and updated unit tests
 
 
 ### Change Log: 20250519
