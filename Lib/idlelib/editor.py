@@ -8,7 +8,7 @@ import sys
 import tokenize
 import traceback
 import webbrowser
-
+import time
 from tkinter import *
 from tkinter.font import Font
 from tkinter.ttk import Scrollbar
@@ -292,6 +292,9 @@ class EditorWindow:
                 io.set_filename(filename)
                 self.good_load = True
 
+        if filename and self.good_load and self.ispythonsource(filename):
+            self.print_foldable_regions()
+
         self.ResetColorizer()
         self.saved_change_hook()
         self.update_recent_files_list()
@@ -361,6 +364,11 @@ class EditorWindow:
             text.bind("<<toggle-line-numbers>>", self.toggle_line_numbers_event)
         else:
             self.update_menu_state('options', '*ine*umbers', 'disabled')
+
+        # After all other initialization, add this:
+        self._last_fold_update = 0
+        self._content_hash = None
+        self._schedule_fold_update()
 
     def handle_winconfig(self, event=None):
         self.set_width()
@@ -1601,6 +1609,48 @@ class EditorWindow:
             menu_label = "Hide"
         self.update_menu_label(menu='options', index='*ine*umbers',
                                label=f'{menu_label} Line Numbers')
+
+    def print_foldable_regions(self):
+        """Find and print foldable regions in the current file."""
+        if not self.text or not self.ispythonsource(self.io.filename):
+            return
+        
+        try:
+            content = self.text.get('1.0', 'end')
+            from idlelib.pyparse import Parser
+            regions = Parser.find_foldable_regions(content)
+            
+            if regions:
+                print(f"\nFoldable regions in {self.io.filename or 'untitled'}:")
+                for start, end, region_type in regions:
+                    print(f"  {region_type.capitalize()}: lines {start}-{end}")
+            else:
+                print(f"\nNo foldable regions found in {self.io.filename or 'untitled'}")
+        except Exception as e:
+            print(f"Error finding foldable regions: {e}")
+
+    def _schedule_fold_update(self):
+        """Schedule periodic checks for content changes."""
+        if not hasattr(self, 'text') or not self.text:
+            return
+        
+        # Check for changes every 2 seconds
+        current_time = time.time()
+        if current_time - getattr(self, '_last_fold_update', 0) > 2.0:
+            # Get current content
+            if hasattr(self, 'io') and self.io.filename and self.ispythonsource(self.io.filename):
+                content = self.text.get('1.0', 'end')
+                current_hash = hash(content)
+                
+                # Only update if content has changed
+                if current_hash != getattr(self, '_content_hash', None):
+                    self._content_hash = current_hash
+                    self._last_fold_update = current_time
+                    self.print_foldable_regions()
+        
+        # Schedule next check
+        if hasattr(self, 'text') and self.text:
+            self.text.after(1000, self._schedule_fold_update)  # Check every second
 
 # "line.col" -> line, as an int
 def index2line(index):
