@@ -291,7 +291,7 @@ class EditorWindow:
             else:
                 io.set_filename(filename)
                 self.good_load = True
-
+        self.foldable_regions=[]
         if filename and self.good_load and self.ispythonsource(filename):
             self.print_foldable_regions()
 
@@ -1624,8 +1624,10 @@ class EditorWindow:
                 print(f"\nFoldable regions in {self.io.filename or 'untitled'}:")
                 for start, end, region_type in regions:
                     print(f"  {region_type.capitalize()}: lines {start}-{end}")
-            else:
-                print(f"\nNo foldable regions found in {self.io.filename or 'untitled'}")
+            self.foldable_regions = regions
+            
+            # Add fold buttons after detecting regions
+            self.create_fold_buttons()
         except Exception as e:
             print(f"Error finding foldable regions: {e}")
 
@@ -1651,6 +1653,56 @@ class EditorWindow:
         # Schedule next check
         if hasattr(self, 'text') and self.text:
             self.text.after(1000, self._schedule_fold_update)  # Check every second
+
+    def create_fold_buttons(self):
+        """Create fold buttons for each foldable region."""
+        # Clear any existing fold buttons
+        if hasattr(self, 'fold_buttons'):
+            for button in self.fold_buttons.values():
+                button.destroy()
+    
+        self.fold_buttons = {}
+        self.folded_regions = {}
+    
+        # Create new buttons for each region
+        if hasattr(self, 'foldable_regions') and self.foldable_regions:
+            for start, end, region_type in self.foldable_regions:
+                button = Button(self.text, text="+", width=2, padx=0, pady=0,
+                              font=("Courier", 8), relief=FLAT)
+                
+                # Store region info
+                button.region_id = f"{start}:{end}"
+                button.start = start
+                button.end = end
+                button.region_type = region_type
+                
+                # Configure command
+                button.config(command=lambda b=button: self.toggle_fold(b))
+                
+                # Place button at beginning of line
+                pos = f"{start}.0"
+                self.fold_buttons[start] = button
+                self.text.window_create(pos, window=button)
+
+    def toggle_fold(self, button):
+        """Toggle folding for a region."""
+        region_id = button.region_id
+        
+        if region_id in self.folded_regions:
+            # Unfold
+            tag_name = self.folded_regions[region_id]
+            self.text.tag_remove(tag_name, "1.0", "end")
+            button.config(text="+")
+            del self.folded_regions[region_id]
+        else:
+            # Fold
+            tag_name = f"fold-{region_id}"
+            self.text.tag_config(tag_name, elide=True)
+            
+            # Hide everything except first line
+            self.text.tag_add(tag_name, f"{button.start}.end", f"{button.end}.end")
+            button.config(text="-")
+            self.folded_regions[region_id] = tag_name
 
 # "line.col" -> line, as an int
 def index2line(index):
