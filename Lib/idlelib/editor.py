@@ -1624,12 +1624,13 @@ class EditorWindow:
                 print(f"\nFoldable regions in {self.io.filename or 'untitled'}:")
                 for start, end, region_type in regions:
                     print(f"  {region_type.capitalize()}: lines {start}-{end}")
-            self.foldable_regions = regions
+                self.foldable_regions = regions
             
             # Add fold buttons after detecting regions
             self.create_fold_buttons()
         except Exception as e:
             print(f"Error finding foldable regions: {e}")
+        print(self.foldable_regions)
 
     def _schedule_fold_update(self):
         """Schedule periodic checks for content changes."""

@@ -593,7 +593,7 @@ class Parser:
         try:
             tree = ast.parse(code)
         except Exception:
-            return []
+            return Exception("Failed to parse code")
 
         regions = []
 
