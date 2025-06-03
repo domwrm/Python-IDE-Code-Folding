@@ -318,7 +318,6 @@ class LineNumbers(BaseSideBar):
         
         # Configure the foldable tag with a "+" suffix and make it clickable
         self.sidebar_text.tag_config('foldable', justify=tk.RIGHT)
-        
         # Bind click event to the foldable tag
         self.sidebar_text.tag_bind('foldable', '<Button-1>', self.fold_handler)
 
@@ -344,7 +343,6 @@ class LineNumbers(BaseSideBar):
             selectforeground=foreground, selectbackground=background,
             inactiveselectbackground=background,
         )
-        
         # Also configure the foldable tag with the same colors
         self.sidebar_text.tag_config('foldable', foreground=foreground)
 
@@ -378,7 +376,6 @@ class LineNumbers(BaseSideBar):
         with temp_enable_text_widget(self.sidebar_text):
             # Clear existing content and recreate it
             self.sidebar_text.delete('1.0', 'end-1c')
-            
             for line_num in range(1, end + 1):
                 if line_num in foldable_lines:
                     line_text = f"{line_num}+"
@@ -402,9 +399,7 @@ class LineNumbers(BaseSideBar):
         # Find the corresponding foldable region for this line
         code = self.text.get('1.0', 'end')
         try:
-            from idlelib.pyparse import Parser
             foldable_regions = Parser.find_foldable_regions(code)
-            
             # Find the region that starts at this line
             for start, end, region_type in foldable_regions:
                 if start == line_num:
