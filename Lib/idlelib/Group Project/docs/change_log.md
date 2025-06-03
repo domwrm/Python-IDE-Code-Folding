@@ -1,4 +1,9 @@
-# Change Log: 20250519
+### Change Log: 20250528
+
+Added implementation for parsing code with `find_foldable_regions` and updated unit tests
+
+
+### Change Log: 20250519
 
 Modified the Github Repository Settings:
 - Each new addition/feature must be added by creating a separate branch and Pull Request to `main`
