@@ -390,6 +390,132 @@ class LineNumbersTest(unittest.TestCase):
         ln.update_colors()
         assert_colors_are_equal(orig_colors)
 
+    def test_fold_indicators(self):
+        """Test that fold indicators appear for foldable code regions."""
+        # Mock the find_foldable_regions function to return known foldable regions
+        with unittest.mock.patch('idlelib.pyparse.Parser.find_foldable_regions') as mock_find:
+            # Set up mock to return lines 2 and 4 as foldable
+            mock_find.return_value = [(2, 3, 'if'), (4, 6, 'function')]
+            
+            # Insert some text that would normally be foldable
+            self.text.insert('1.0', 'line1\nif True:\n    line3\ndef func():\n    line5\n    line6\n')
+            self.linenumber.show_sidebar()
+            
+            # Update the sidebar text with our mocked foldable regions
+            self.linenumber.update_sidebar_text(7)
+            
+            # Get the sidebar text content
+            sidebar_content = self.get_sidebar_text_contents()
+            
+            # Check that the foldable lines have the + indicator
+            lines = sidebar_content.split('\n')
+            # First line should just be "1"
+            self.assertEqual(lines[0], "1")
+            # Second line should be "2+" (foldable)
+            self.assertTrue(lines[1].endswith('+'), f"Expected line 2 to have fold indicator, got {lines[1]}")
+            # Third line should just be "3"
+            self.assertFalse(lines[2].endswith('+'), f"Line 3 should not have fold indicator, got {lines[2]}")
+            # Fourth line should be "4+" (foldable)
+            self.assertTrue(lines[3].endswith('+'), f"Expected line 4 to have fold indicator, got {lines[3]}")
+
+    def test_fold_indicator_update(self):
+        """Test that fold indicators update when code changes."""
+        # Mock the find_foldable_regions function
+        with unittest.mock.patch('idlelib.pyparse.Parser.find_foldable_regions') as mock_find:
+            # Initially no foldable regions
+            mock_find.return_value = []
+            
+            # Insert some text
+            self.text.insert('1.0', 'line1\nline2\nline3\n')
+            self.linenumber.show_sidebar()
+            
+            # Update the sidebar text
+            self.linenumber.update_sidebar_text(3)
+            
+            # Check that no lines have fold indicators
+            sidebar_content = self.get_sidebar_text_contents()
+            lines = sidebar_content.split('\n')
+            for line in lines:
+                self.assertFalse('+' in line, f"Line should not have fold indicator: {line}")
+            
+            # Now update mock to return line 2 as foldable
+            mock_find.return_value = [(2, 3, 'if')]
+            
+            # Update the sidebar text
+            self.linenumber.update_sidebar_text(3)
+            
+            # Check that line 2 now has a fold indicator
+            sidebar_content = self.get_sidebar_text_contents()
+            lines = sidebar_content.split('\n')
+            self.assertFalse('+' in lines[0], "Line 1 should not have fold indicator")
+            self.assertTrue('+' in lines[1], "Line 2 should have fold indicator")
+
+    def test_fold_handler(self):
+        """Test that clicking on a fold indicator calls the fold handler."""
+        # Create a fold handler that we can track
+        fold_handler_called = False
+        def mock_fold_handler(event):
+            nonlocal fold_handler_called
+            fold_handler_called = True
+            return "break"
+        
+        # Replace the fold handler with our mock
+        self.linenumber.fold_handler = mock_fold_handler
+        
+        # Mock the find_foldable_regions function
+        with unittest.mock.patch('idlelib.pyparse.Parser.find_foldable_regions') as mock_find:
+            # Set up a foldable region
+            mock_find.return_value = [(2, 3, 'if')]
+            
+            # Insert some text
+            self.text.insert('1.0', 'line1\nif True:\n    line3\n')
+            self.linenumber.show_sidebar()
+            
+            # Update the sidebar text
+            self.linenumber.update_sidebar_text(3)
+            
+            # Make sure we have a tag for foldable lines
+            self.assertTrue(hasattr(self.linenumber.sidebar_text, 'tag_names'))
+            
+            # Simulate clicking on the fold indicator
+            x, y = self.get_line_screen_position(2)
+            self.linenumber.sidebar_text.event_generate('<Button-1>', x=x, y=y)
+            self.root.update()
+            
+            # Check that the fold handler was called
+            self.assertTrue(fold_handler_called, "Fold handler was not called when clicking on fold indicator")
+
+    def test_sidebar_width_with_fold_indicators(self):
+        """Test that the sidebar width accommodates fold indicators."""
+        # Mock the find_foldable_regions function
+        with unittest.mock.patch('idlelib.pyparse.Parser.find_foldable_regions') as mock_find:
+            # Set up a foldable region
+            mock_find.return_value = [(1, 3, 'if')]
+            
+            # Insert text and show sidebar
+            self.text.insert('1.0', 'if True:\n    line2\n    line3\n')
+            self.linenumber.show_sidebar()
+            
+            # Get initial width
+            initial_width = float(self.linenumber.sidebar_text['width'])
+            
+            # Add more lines to increase line number width
+            self.text.insert('end', 'line\n' * 10)
+            self.root.update()
+            
+            # Get new width
+            new_width = float(self.linenumber.sidebar_text['width'])
+            
+            # Check that width increased to accommodate larger line numbers
+            self.assertGreater(new_width, initial_width, 
+                              "Sidebar width should increase for larger line numbers")
+            
+            # Make sure there's enough room for the fold indicators
+            # The width should be at least enough for the line numbers plus one character for the + sign
+            expected_min_width = len(str(get_end_linenumber(self.text))) + 1
+            self.assertGreaterEqual(new_width, expected_min_width,
+                                   f"Sidebar width ({new_width}) should be at least {expected_min_width} to accommodate fold indicators")
+
 
 class ShellSidebarTest(unittest.TestCase):
     root: tk.Tk = None
@@ -769,6 +895,8 @@ class ShellSidebarTest(unittest.TestCase):
 
         copied_text = text.clipboard_get()
         self.assertEqual(copied_text, selected_text_with_prompts)
+
+
 
 
 if __name__ == '__main__':

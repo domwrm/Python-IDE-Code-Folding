@@ -10,6 +10,7 @@ from tkinter.font import Font
 from idlelib.config import idleConf
 from idlelib.delegator import Delegator
 from idlelib import macosx
+from idlelib.pyparse import Parser
 
 
 def get_lineno(text, index):
@@ -90,7 +91,17 @@ class BaseSideBar:
 
     def update_colors(self):
         """Update the sidebar text colors, usually after config changes."""
-        raise NotImplementedError
+        colors = idleConf.GetHighlight(idleConf.CurrentTheme(), 'linenumber')
+        foreground = colors['foreground']
+        background = colors['background']
+        self.sidebar_text.config(
+            fg=foreground, bg=background,
+            selectforeground=foreground, selectbackground=background,
+            inactiveselectbackground=background,
+        )
+        
+        # Also configure the foldable tag with the same colors
+        self.sidebar_text.tag_config('foldable', foreground=foreground)
 
     def grid(self):
         """Layout the widget, always using grid layout."""
@@ -304,6 +315,12 @@ class LineNumbers(BaseSideBar):
             self.sidebar_text.insert('insert', '1', 'linenumber')
         self.sidebar_text.config(takefocus=False, exportselection=False)
         self.sidebar_text.tag_config('linenumber', justify=tk.RIGHT)
+        
+        # Configure the foldable tag with a "+" suffix and make it clickable
+        self.sidebar_text.tag_config('foldable', justify=tk.RIGHT)
+        
+        # Bind click event to the foldable tag
+        self.sidebar_text.tag_bind('foldable', '<Button-1>', self.fold_handler)
 
         end = get_end_linenumber(self.text)
         self.update_sidebar_text(end)
@@ -327,6 +344,9 @@ class LineNumbers(BaseSideBar):
             selectforeground=foreground, selectbackground=background,
             inactiveselectbackground=background,
         )
+        
+        # Also configure the foldable tag with the same colors
+        self.sidebar_text.tag_config('foldable', foreground=foreground)
 
     def update_sidebar_text(self, end):
         """
@@ -337,27 +357,65 @@ class LineNumbers(BaseSideBar):
         if end == self.prev_end:
             return
 
+        # Get foldable regions
+        code = self.text.get('1.0', 'end')
+        foldable_regions = []
+        try:
+            foldable_regions = Parser.find_foldable_regions(code)
+        except Exception:
+            # If there's an error parsing the code (e.g., syntax error), continue without folding indicators
+            pass
+        
+        # Create a set of line numbers that have foldable regions
+        foldable_lines = {region[0] for region in foldable_regions}
+        
         width_difference = len(str(end)) - len(str(self.prev_end))
         if width_difference:
             cur_width = int(float(self.sidebar_text['width']))
             new_width = cur_width + width_difference
-            self.sidebar_text['width'] = self._sidebar_width_type(new_width)
+            self.sidebar_text['width'] = self._sidebar_width_type(new_width + 1)
 
         with temp_enable_text_widget(self.sidebar_text):
-            if end > self.prev_end:
-                new_text = '\n'.join(itertools.chain(
-                    [''],
-                    map(str, range(self.prev_end + 1, end + 1)),
-                ))
-                self.sidebar_text.insert(f'end -1c', new_text, 'linenumber')
-            else:
-                self.sidebar_text.delete(f'{end+1}.0 -1c', 'end -1c')
+            # Clear existing content and recreate it
+            self.sidebar_text.delete('1.0', 'end-1c')
+            
+            for line_num in range(1, end + 1):
+                if line_num in foldable_lines:
+                    line_text = f"{line_num}+"
+                    self.sidebar_text.insert('end', line_text + '\n', ('linenumber', 'foldable'))
+                else:
+                    line_text = str(line_num) + ' '
+                    self.sidebar_text.insert('end', line_text + '\n', 'linenumber')
 
         self.prev_end = end
 
     def yscroll_event(self, *args, **kwargs):
         self.sidebar_text.yview_moveto(args[0])
         return 'break'
+
+    def fold_handler(self, event):
+        """Handle click on the "+" fold indicator."""
+        # Get the line number at the clicked position
+        index = self.sidebar_text.index(f"@{event.x},{event.y}")
+        line_num = int(float(index))
+        
+        # Find the corresponding foldable region for this line
+        code = self.text.get('1.0', 'end')
+        try:
+            from idlelib.pyparse import Parser
+            foldable_regions = Parser.find_foldable_regions(code)
+            
+            # Find the region that starts at this line
+            for start, end, region_type in foldable_regions:
+                if start == line_num:
+                    # For now, just print information about the fold - will implement actual folding later
+                    print(f"Folding {region_type} from line {start} to {end}")
+                    # Here we would implement the actual folding mechanism
+                    break
+        except Exception:
+            pass
+        
+        return "break"
 
 
 class WrappedLineHeightChangeDelegator(Delegator):
