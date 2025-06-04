@@ -8,9 +8,9 @@ XXX TO DO:
 - add base classes to class browser tree
 """
 
+import os
 import pyclbr
 import sys
-import os
 
 
 from idlelib.config import idleConf
@@ -25,8 +25,6 @@ file_open = None  # Method...Item and Class...Item use this.
 
 # The browser depends on pyclbr and importlib which do not support .pyi files.
 browseable_extension_blocklist = ('.pyi',)
-print("test long strings this should be formatted haha")
-
 
 def is_browseable_extension(path):
     _, ext = os.path.splitext(path)
