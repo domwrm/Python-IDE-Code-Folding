@@ -1,3 +1,8 @@
+### Change Log: 20250603
+
+Added automated linting script and yaml file to auto format code using pre-commit hooks.
+
+
 ### Change Log: 20250528
 
 Added implementation for parsing code with `find_foldable_regions` and updated unit tests
