@@ -1,3 +1,10 @@
+### Change Log: 20250603
+
+Added implementation to display the `+` button to the right of the line numbers in the sidebar.
+Uses the `find_foldable_regions` output to display the button on the starting line of a foldable region.
+Refreshes/updates everytime there is a change to the number of lines (similar to how the original line numbers were being updated in the sidebar)
+Currently, on the click of the `+` button, it just prints information about the fold to the terminal, will implement actual folding later.
+
 ### Change Log: 20250528
 
 Added implementation for parsing code with `find_foldable_regions` and updated unit tests

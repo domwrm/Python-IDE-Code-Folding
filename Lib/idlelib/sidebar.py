@@ -360,31 +360,35 @@ class LineNumbers(BaseSideBar):
         foldable_regions = []
         try:
             foldable_regions = Parser.find_foldable_regions(code)
+
+        
+            # Create a set of line numbers that have foldable regions
+            foldable_lines = {region[0] for region in foldable_regions}
+            
+            width_difference = len(str(end)) - len(str(self.prev_end))
+            if width_difference:
+                cur_width = int(float(self.sidebar_text['width']))
+                new_width = cur_width + width_difference
+                self.sidebar_text['width'] = self._sidebar_width_type(new_width + 1)
+
+            with temp_enable_text_widget(self.sidebar_text):
+                # Clear existing content and recreate it
+                self.sidebar_text.delete('1.0', 'end-1c')
+                for line_num in range(1, end + 1):
+                    if line_num in foldable_lines:
+                        line_text = f"{line_num}+"
+                        self.sidebar_text.insert('end', line_text + '\n', ('linenumber', 'foldable'))
+                    else:
+                        line_text = str(line_num) + ' '
+                        self.sidebar_text.insert('end', line_text + '\n', 'linenumber')
+
+            self.prev_end = end
+
         except Exception:
-            # If there's an error parsing the code (e.g., syntax error), continue without folding indicators
-            pass
-        
-        # Create a set of line numbers that have foldable regions
-        foldable_lines = {region[0] for region in foldable_regions}
-        
-        width_difference = len(str(end)) - len(str(self.prev_end))
-        if width_difference:
-            cur_width = int(float(self.sidebar_text['width']))
-            new_width = cur_width + width_difference
-            self.sidebar_text['width'] = self._sidebar_width_type(new_width + 1)
-
-        with temp_enable_text_widget(self.sidebar_text):
-            # Clear existing content and recreate it
-            self.sidebar_text.delete('1.0', 'end-1c')
-            for line_num in range(1, end + 1):
-                if line_num in foldable_lines:
-                    line_text = f"{line_num}+"
-                    self.sidebar_text.insert('end', line_text + '\n', ('linenumber', 'foldable'))
-                else:
-                    line_text = str(line_num) + ' '
-                    self.sidebar_text.insert('end', line_text + '\n', 'linenumber')
-
-        self.prev_end = end
+            # If there's an error parsing the code (e.g., syntax error), continue while leaving previous foldable regions intact
+            # This allows the sidebar to still function even if the code has issues
+            print(f"Error parsing code: {code[:50]}...")
+            return
 
     def yscroll_event(self, *args, **kwargs):
         self.sidebar_text.yview_moveto(args[0])
