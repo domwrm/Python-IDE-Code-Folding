@@ -477,63 +477,6 @@ class EditorWindow:
         ("help", "_Help"),
     ]
 
-    # Add a new menu entry for foldable blocks
-    def fill_menus(self, menudefs=None, keydefs=None):
-        # ...existing code...
-        if menudefs is None:
-            menudefs = self.mainmenu.menudefs
-        if keydefs is None:
-            keydefs = self.mainmenu.default_keydefs
-        menudict = self.menudict
-        text = self.text
-        for mname, entrylist in menudefs:
-            menu = menudict.get(mname)
-            if not menu:
-                continue
-            for entry in entrylist:
-                if entry is None:
-                    menu.add_separator()
-                else:
-                    label, eventname = entry
-                    checkbutton = (label[:1] == '!')
-                    if checkbutton:
-                        label = label[1:]
-                    underline, label = prepstr(label)
-                    accelerator = get_accelerator(keydefs, eventname)
-                    def command(text=text, eventname=eventname):
-                        text.event_generate(eventname)
-                    if checkbutton:
-                        var = self.get_var_obj(eventname, BooleanVar)
-                        menu.add_checkbutton(label=label, underline=underline,
-                            command=command, accelerator=accelerator,
-                            variable=var)
-                    else:
-                        menu.add_command(label=label, underline=underline,
-                                         command=command,
-                                         accelerator=accelerator)
-        # After filling menus, add our new command to the Edit menu
-        edit_menu = self.menudict.get('edit')
-        if edit_menu:
-            edit_menu.add_separator()
-            edit_menu.add_command(
-                label="Show Foldable Blocks",
-                command=self.show_foldable_blocks_dialog
-            )
-
-    def show_foldable_blocks_dialog(self):
-        """Show a dialog listing foldable blocks in the current buffer."""
-        source = self.text.get("1.0", "end-1c")
-        try:
-            blocks = find_foldable_blocks(source)
-        except Exception as e:
-            messagebox.showerror("Error", f"AST parse error:\n{e}", parent=self.text)
-            return
-        if not blocks:
-            msg = "No foldable blocks found."
-        else:
-            msg = "\n".join(f"{b[0]}: lines {b[1]}-{b[2]}" for b in blocks)
-        messagebox.showinfo("Foldable Blocks", msg, parent=self.text)
-
     def createmenubar(self):
         """Populate the menu bar widget for the editor window.
 
