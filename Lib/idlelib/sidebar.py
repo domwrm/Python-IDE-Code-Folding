@@ -315,10 +315,7 @@ class LineNumbers(BaseSideBar):
             self.sidebar_text.insert('insert', '1', 'linenumber')
         self.sidebar_text.config(takefocus=False, exportselection=False)
         self.sidebar_text.tag_config('linenumber', justify=tk.RIGHT)
-        
-        # Configure the foldable tag with a "+" suffix and make it clickable
         self.sidebar_text.tag_config('foldable', justify=tk.RIGHT)
-        # Bind click event to the foldable tag
         self.sidebar_text.tag_bind('foldable', '<Button-1>', self.fold_handler)
 
         end = get_end_linenumber(self.text)
@@ -343,7 +340,6 @@ class LineNumbers(BaseSideBar):
             selectforeground=foreground, selectbackground=background,
             inactiveselectbackground=background,
         )
-        # Also configure the foldable tag with the same colors
         self.sidebar_text.tag_config('foldable', foreground=foreground)
 
     def update_sidebar_text(self, end):
@@ -355,14 +351,11 @@ class LineNumbers(BaseSideBar):
         if end == self.prev_end:
             return
 
-        # Get foldable regions
         code = self.text.get('1.0', 'end')
         foldable_regions = []
         try:
             foldable_regions = Parser.find_foldable_regions(code)
 
-        
-            # Create a set of line numbers that have foldable regions
             foldable_lines = {region[0] for region in foldable_regions}
             
             width_difference = len(str(end)) - len(str(self.prev_end))
@@ -372,7 +365,6 @@ class LineNumbers(BaseSideBar):
                 self.sidebar_text['width'] = self._sidebar_width_type(new_width + 1)
 
             with temp_enable_text_widget(self.sidebar_text):
-                # Clear existing content and recreate it
                 self.sidebar_text.delete('1.0', 'end-1c')
                 for line_num in range(1, end + 1):
                     if line_num in foldable_lines:
@@ -387,7 +379,6 @@ class LineNumbers(BaseSideBar):
         except Exception:
             # If there's an error parsing the code (e.g., syntax error), continue while leaving previous foldable regions intact
             # This allows the sidebar to still function even if the code has issues
-            print(f"Error parsing code: {code[:50]}...")
             return
 
     def yscroll_event(self, *args, **kwargs):
@@ -396,15 +387,12 @@ class LineNumbers(BaseSideBar):
 
     def fold_handler(self, event):
         """Handle click on the "+" fold indicator."""
-        # Get the line number at the clicked position
         index = self.sidebar_text.index(f"@{event.x},{event.y}")
         line_num = int(float(index))
         
-        # Find the corresponding foldable region for this line
         code = self.text.get('1.0', 'end')
         try:
             foldable_regions = Parser.find_foldable_regions(code)
-            # Find the region that starts at this line
             for start, end, region_type in foldable_regions:
                 if start == line_num:
                     # For now, just print information about the fold - will implement actual folding later
