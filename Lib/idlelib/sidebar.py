@@ -4,12 +4,14 @@ Includes BaseSideBar which can be extended for other sidebar based extensions
 import contextlib
 import functools
 import itertools
-
+import re
+import time
 import tkinter as tk
 from tkinter.font import Font
 from idlelib.config import idleConf
 from idlelib.delegator import Delegator
 from idlelib import macosx
+from idlelib.pyparse import Parser  # Import Parser class
 
 
 def get_lineno(text, index):
@@ -107,8 +109,9 @@ class BaseSideBar:
             self.is_shown = False
 
     def yscroll_event(self, *args, **kwargs):
-        """Hook for vertical scrolling for sub-classes to override."""
-        raise NotImplementedError
+        """Handle scrollbar events (must override the abstract method)."""
+        self.sidebar_text.yview_moveto(args[0])
+        return 'break'
 
     def redirect_yscroll_event(self, *args, **kwargs):
         """Redirect vertical scrolling to the main editor text widget.
@@ -283,6 +286,12 @@ class EndLineDelegator(Delegator):
 class LineNumbers(BaseSideBar):
     """Line numbers support for editor windows."""
     def __init__(self, editwin):
+        # Add folding-related attributes
+        self.foldable_regions = []
+        self.folded_regions = {}
+        self._last_fold_update = 0
+        self._content_hash = None
+        
         super().__init__(editwin)
 
         end_line_delegator = EndLineDelegator(self.update_sidebar_text)
@@ -290,10 +299,17 @@ class LineNumbers(BaseSideBar):
         # are properly updated after undo and redo actions.
         self.editwin.per.insertfilterafter(end_line_delegator,
                                            after=self.editwin.undo)
+        
+        # Schedule initial fold detection if this is a Python file
+        if hasattr(self.editwin, 'io') and hasattr(self.editwin, 'ispythonsource'):
+            if hasattr(self.editwin.io, 'filename') and self.editwin.io.filename:
+                if self.editwin.ispythonsource(self.editwin.io.filename):
+                    self.find_foldable_regions()
+                    self._schedule_fold_update()
 
     def init_widgets(self):
         _padx, pady = get_widget_padding(self.text)
-        self.sidebar_text = tk.Text(self.parent, width=1, wrap=tk.NONE,
+        self.sidebar_text = tk.Text(self.parent, width=4, wrap=tk.NONE,
                                     padx=2, pady=pady,
                                     borderwidth=0, highlightthickness=0)
         self.sidebar_text.config(state=tk.DISABLED)
@@ -304,6 +320,22 @@ class LineNumbers(BaseSideBar):
             self.sidebar_text.insert('insert', '1', 'linenumber')
         self.sidebar_text.config(takefocus=False, exportselection=False)
         self.sidebar_text.tag_config('linenumber', justify=tk.RIGHT)
+        
+        # Configure fold indicator tags - make them more visually distinct
+        self.sidebar_text.tag_config('foldable', foreground='blue')
+        self.sidebar_text.tag_config('folded', foreground='red')
+        
+        # Make fold buttons very obvious
+        self.sidebar_text.tag_config('fold_button', 
+                                    background='#c0c0ff', 
+                                    relief=tk.RAISED, 
+                                    borderwidth=2)
+        
+        # Configure cursor for the entire text widget
+        self.sidebar_text.config(cursor='arrow')
+        
+        # Bind click events for the sidebar
+        self.sidebar_text.bind("<Button-1>", self.sidebar_click_event)
 
         end = get_end_linenumber(self.text)
         self.update_sidebar_text(end)
@@ -330,11 +362,9 @@ class LineNumbers(BaseSideBar):
 
     def update_sidebar_text(self, end):
         """
-        Perform the following action:
-        Each line sidebar_text contains the linenumber for that line
-        Synchronize with editwin.text so that both sidebar_text and
-        editwin.text contain the same number of lines"""
-        if end == self.prev_end:
+        Update the sidebar text with line numbers and fold indicators.
+        """
+        if end == self.prev_end and not hasattr(self, 'foldable_regions'):
             return
 
         width_difference = len(str(end)) - len(str(self.prev_end))
@@ -343,21 +373,161 @@ class LineNumbers(BaseSideBar):
             new_width = cur_width + width_difference
             self.sidebar_text['width'] = self._sidebar_width_type(new_width)
 
+        # Get foldable regions if available
+        if not hasattr(self, 'foldable_regions'):
+            self.foldable_regions = []
+            if hasattr(self.editwin, 'io') and self.editwin.io.filename:
+                if hasattr(self.editwin, 'ispythonsource') and self.editwin.ispythonsource(self.editwin.io.filename):
+                    self.find_foldable_regions()
+
+        # Create a dictionary of line numbers that start foldable regions
+        foldable_starts = {}
+        for start, end_line, region_type in self.foldable_regions:
+            region_id = f"{start}:{end_line}"
+            is_folded = region_id in self.folded_regions
+            foldable_starts[start] = (is_folded, region_id, region_type, end_line)
+
         with temp_enable_text_widget(self.sidebar_text):
-            if end > self.prev_end:
-                new_text = '\n'.join(itertools.chain(
-                    [''],
-                    map(str, range(self.prev_end + 1, end + 1)),
-                ))
-                self.sidebar_text.insert(f'end -1c', new_text, 'linenumber')
-            else:
-                self.sidebar_text.delete(f'{end+1}.0 -1c', 'end -1c')
+            self.sidebar_text.delete("1.0", "end")
+            
+            # Add line numbers with fold indicators
+            for line_num in range(1, end + 1):
+                if line_num in foldable_starts:
+                    is_folded, region_id, region_type, end_line = foldable_starts[line_num]
+                    fold_indicator = "[-]" if is_folded else "[+]"
+                    tag = "folded" if is_folded else "foldable"
+                    
+                    # Insert fold indicator with button-like styling - make it more noticeable
+                    button_index = f"fold-{line_num}"
+                    self.sidebar_text.insert("end", f"{fold_indicator}", (tag, "fold_button", button_index))
+                    self.sidebar_text.insert("end", f" {line_num}\n", tag)
+                    
+                    # Tag the entire line with a unique tag for this region
+                    line_tag = f"line-{line_num}"
+                    self.sidebar_text.tag_add(line_tag, f"end-1l linestart", f"end-1c")
+                    
+                    # Pass the exact region boundaries to toggle_fold
+                    self.sidebar_text.tag_bind(button_index, "<Button-1>", 
+                                             lambda e, rid=region_id, s=line_num, el=end_line: 
+                                             self.toggle_fold(rid, s, el))
+                    self.sidebar_text.tag_bind(line_tag, "<Button-1>", 
+                                             lambda e, rid=region_id, s=line_num, el=end_line: 
+                                             self.toggle_fold(rid, s, el))
+                else:
+                    self.sidebar_text.insert("end", f"    {line_num}\n", "linenumber")
 
         self.prev_end = end
+    
+    def sidebar_click_event(self, event):
+        """Handle click events in the sidebar."""
+        # Get the text index at the click position
+        index = self.sidebar_text.index(f"@{event.x},{event.y}")
+        line_num = int(float(index))
+        
+        # Get tags at the click position
+        tags = self.sidebar_text.tag_names(index)
+        
+        print(f"Click detected at line {line_num}, tags: {tags}")
+        
+        # First check for direct fold button clicks
+        for tag in tags:
+            if tag.startswith("fold-"):
+                # This is a direct tag we added to the fold button
+                clicked_line = int(tag.split("-")[1])
+                for start, end, region_type in self.foldable_regions:
+                    if start == clicked_line:
+                        region_id = f"{start}:{end}"
+                        print(f"Toggling fold for region {region_id}")
+                        self.toggle_fold(region_id, start, end)
+                        return "break"
+        
+        # Next check for clicks on fold-related tags
+        if "fold_button" in tags or "foldable" in tags or "folded" in tags:
+            # Find the corresponding foldable region
+            for start, end, region_type in self.foldable_regions:
+                if line_num == start:
+                    region_id = f"{start}:{end}"
+                    print(f"Toggling fold for region {region_id}")
+                    self.toggle_fold(region_id, start, end)
+                    return "break"
+        
+        return None
 
-    def yscroll_event(self, *args, **kwargs):
-        self.sidebar_text.yview_moveto(args[0])
-        return 'break'
+    def toggle_fold(self, region_id, start, end):
+        """Toggle folding for a region."""
+        print(f"Toggle fold called for region {region_id} ({start}-{end})")
+        
+        if region_id in self.folded_regions:
+            # Unfold
+            tag_name = self.folded_regions[region_id]
+            print(f"Unfolding region with tag {tag_name}")
+            self.text.tag_remove(tag_name, "1.0", "end")
+            del self.folded_regions[region_id]
+        else:
+            # Fold - use the exact region boundaries from find_foldable_regions
+            tag_name = f"fold-{region_id}"
+            print(f"Folding region with tag {tag_name}")
+            self.text.tag_config(tag_name, elide=True)
+            
+            # Get first line to keep visible
+            first_line_end = f"{start}.0 lineend"
+            
+            # Use the exact end line from the foldable region, including its ending
+            fold_end = f"{end}.0 lineend"
+            
+            print(f"Folding from {first_line_end} to {fold_end}")
+            self.text.tag_add(tag_name, first_line_end, fold_end)
+            self.folded_regions[region_id] = tag_name
+            
+            # Make sure the elide property is set
+            self.text.tag_configure(tag_name, elide=True)
+        
+        # Update the sidebar display
+        self.update_sidebar_text(get_end_linenumber(self.text))
+
+    def find_foldable_regions(self):
+        """Find foldable regions in the current file."""
+        if not hasattr(self.editwin, 'io') or not self.editwin.io.filename:
+            return
+            
+        if not hasattr(self.editwin, 'ispythonsource') or not self.editwin.ispythonsource(self.editwin.io.filename):
+            return
+        
+        try:
+            content = self.text.get('1.0', 'end')
+            
+            # Use Parser.find_foldable_regions method
+            self.foldable_regions = Parser.find_foldable_regions(content)
+            
+            # Update the sidebar display
+            self.update_sidebar_text(get_end_linenumber(self.text))
+        except Exception as e:
+            pass
+
+
+    def _schedule_fold_update(self):
+        """Schedule periodic checks for content changes."""
+        if not hasattr(self, 'text') or not self.text:
+            return
+        
+        # Check for changes every 2 seconds
+        current_time = time.time()
+        if current_time - getattr(self, '_last_fold_update', 0) > 2.0:
+            # Check if this is a Python source file
+            if hasattr(self.editwin, 'io') and hasattr(self.editwin.io, 'filename'):
+                if self.editwin.ispythonsource(self.editwin.io.filename):
+                    content = self.text.get('1.0', 'end')
+                    current_hash = hash(content)
+                    
+                    # Only update if content has changed
+                    if current_hash != self._content_hash:
+                        self._content_hash = current_hash
+                        self._last_fold_update = current_time
+                        self.find_foldable_regions()
+        
+        # Schedule next check
+        if hasattr(self, 'text') and self.text:
+            self.text.after(1000, self._schedule_fold_update)  # Check every second
 
 
 class WrappedLineHeightChangeDelegator(Delegator):
