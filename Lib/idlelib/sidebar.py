@@ -545,7 +545,7 @@ class LineNumbers(BaseSideBar):
         if width_difference:
             cur_width = int(float(self.sidebar_text['width']))
             new_width = cur_width + width_difference
-            self.sidebar_text['width'] = self._sidebar_width_type(new_width)
+            self.sidebar_text['width'] = self._sidebar_width_type(new_width + 1)
         
         # If folding is active, use the special update method
         if hasattr(self, 'folded_regions') and self.folded_regions:
