@@ -382,10 +382,12 @@ class LineNumbers(BaseSideBar):
 
         # Create a dictionary of line numbers that start foldable regions
         foldable_starts = {}
-        for start, end_line, region_type in self.foldable_regions:
-            region_id = f"{start}:{end_line}"
-            is_folded = region_id in self.folded_regions
-            foldable_starts[start] = (is_folded, region_id, region_type, end_line)
+        # Only process foldable regions if they exist and are valid
+        if hasattr(self, 'foldable_regions') and isinstance(self.foldable_regions, list):
+            for start, end_line, region_type in self.foldable_regions:
+                region_id = f"{start}:{end_line}"
+                is_folded = region_id in self.folded_regions
+                foldable_starts[start] = (is_folded, region_id, region_type, end_line)
 
         with temp_enable_text_widget(self.sidebar_text):
             self.sidebar_text.delete("1.0", "end")
@@ -497,12 +499,20 @@ class LineNumbers(BaseSideBar):
             content = self.text.get('1.0', 'end')
             
             # Use Parser.find_foldable_regions method
-            self.foldable_regions = Parser.find_foldable_regions(content)
+            regions = Parser.find_foldable_regions(content)
             
-            # Update the sidebar display
-            self.update_sidebar_text(get_end_linenumber(self.text))
+            # If we got an exception object instead of regions, just return without updating
+            if isinstance(regions, Exception):
+                return
+                
+            # Only update if we got valid regions
+            if isinstance(regions, list):
+                self.foldable_regions = regions
+                # Update the sidebar display
+                self.update_sidebar_text(get_end_linenumber(self.text))
         except Exception as e:
-            pass
+            # For any other exception, also just return silently
+            return
 
 
     def _schedule_fold_update(self):
