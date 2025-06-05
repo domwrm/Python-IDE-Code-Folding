@@ -362,6 +362,7 @@ class EditorWindow:
         else:
             self.update_menu_state('options', '*ine*umbers', 'disabled')
 
+
     def handle_winconfig(self, event=None):
         self.set_width()
 
@@ -1221,63 +1222,6 @@ class EditorWindow:
             if keylist:
                 text.event_add(event, *keylist)
 
-    # Add a new menu entry for foldable blocks
-    def fill_menus(self, menudefs=None, keydefs=None):
-        # ...existing code...
-        if menudefs is None:
-            menudefs = self.mainmenu.menudefs
-        if keydefs is None:
-            keydefs = self.mainmenu.default_keydefs
-        menudict = self.menudict
-        text = self.text
-        for mname, entrylist in menudefs:
-            menu = menudict.get(mname)
-            if not menu:
-                continue
-            for entry in entrylist:
-                if entry is None:
-                    menu.add_separator()
-                else:
-                    label, eventname = entry
-                    checkbutton = (label[:1] == '!')
-                    if checkbutton:
-                        label = label[1:]
-                    underline, label = prepstr(label)
-                    accelerator = get_accelerator(keydefs, eventname)
-                    def command(text=text, eventname=eventname):
-                        text.event_generate(eventname)
-                    if checkbutton:
-                        var = self.get_var_obj(eventname, BooleanVar)
-                        menu.add_checkbutton(label=label, underline=underline,
-                            command=command, accelerator=accelerator,
-                            variable=var)
-                    else:
-                        menu.add_command(label=label, underline=underline,
-                                         command=command,
-                                         accelerator=accelerator)
-        # After filling menus, add our new command to the Edit menu
-        edit_menu = self.menudict.get('edit')
-        if edit_menu:
-            edit_menu.add_separator()
-            edit_menu.add_command(
-                label="Show Foldable Blocks",
-                command=self.show_foldable_blocks_dialog
-            )
-
-    def show_foldable_blocks_dialog(self):
-        """Show a dialog listing foldable blocks in the current buffer."""
-        source = self.text.get("1.0", "end-1c")
-        try:
-            blocks = find_foldable_blocks(source)
-        except Exception as e:
-            messagebox.showerror("Error", f"AST parse error:\n{e}", parent=self.text)
-            return
-        if not blocks:
-            msg = "No foldable blocks found."
-        else:
-            msg = "\n".join(f"{b[0]}: lines {b[1]}-{b[2]}" for b in blocks)
-        messagebox.showinfo("Foldable Blocks", msg, parent=self.text)
-
     def fill_menus(self, menudefs=None, keydefs=None):
         """Fill in dropdown menus used by this window.
 
@@ -1656,7 +1600,32 @@ class EditorWindow:
         else:
             self.line_numbers.show_sidebar()
             menu_label = "Hide"
-        self.update_menu_label('options', '*ine*umbers', f'{menu_label} Line Numbers')
+        self.update_menu_label(menu='options', index='*ine*umbers',
+                               label=f'{menu_label} Line Numbers')
+
+    def setup_code_folding(self):
+        """Set up code folding if in a Python file."""
+        # We just need to ensure line numbers sidebar is enabled
+        # since the folding functionality is integrated with it
+        if self.line_numbers is None and self.__class__.__name__ == 'EditorWindow':
+            self.line_numbers = self.LineNumbers(self)
+        # Add menu option and keyboard shortcut for folding
+        self.text.bind("<<toggle-code-folding>>", self.toggle_code_folding_event)
+
+    def toggle_code_folding_event(self, event=None):
+        """Toggle code folding via the line numbers sidebar."""
+        if self.line_numbers is None:
+            return
+        
+        # Since folding is now part of LineNumbers, toggling code folding
+        # just shows/hides the line numbers sidebar
+        self.toggle_line_numbers_event()
+        return "break"
+        
+
+
+
+        
 
 # "line.col" -> line, as an int
 def index2line(index):
@@ -1821,36 +1790,3 @@ if __name__ == '__main__':
 
     from idlelib.idle_test.htest import run
     run(_editor_window)
-
-import ast
-
-def find_foldable_blocks(source):
-    """
-    Parse Python source and return a list of (type, start_lineno, end_lineno) for foldable blocks.
-    """
-    class BlockVisitor(ast.NodeVisitor):
-        def __init__(self):
-            self.blocks = []
-
-        def generic_visit(self, node):
-            # Only interested in nodes with lineno and end_lineno
-            if hasattr(node, 'lineno') and hasattr(node, 'end_lineno'):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
-                                     ast.For, ast.AsyncFor, ast.While, ast.If, ast.With, ast.AsyncWith, ast.Try)):
-                    self.blocks.append((type(node).__name__, node.lineno, node.end_lineno))
-            super().generic_visit(node)
-
-    tree = ast.parse(source)
-    visitor = BlockVisitor()
-    visitor.visit(tree)
-    return visitor.blocks
-
-if __name__ == "__main__":
-    # Terminal test: parse a file and print foldable blocks
-    import sys
-    if len(sys.argv) > 1:
-        with open(sys.argv[1], "r") as f:
-            src = f.read()
-        blocks = find_foldable_blocks(src)
-        for b in blocks:
-            print(f"{b[0]}: lines {b[1]}-{b[2]}")
