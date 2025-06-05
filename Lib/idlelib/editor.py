@@ -8,7 +8,7 @@ import sys
 import tokenize
 import traceback
 import webbrowser
-import time
+
 from tkinter import *
 from tkinter.font import Font
 from tkinter.ttk import Scrollbar
@@ -291,9 +291,6 @@ class EditorWindow:
             else:
                 io.set_filename(filename)
                 self.good_load = True
-        self.foldable_regions=[]
-        if filename and self.good_load and self.ispythonsource(filename):
-            self.print_foldable_regions()
 
         self.ResetColorizer()
         self.saved_change_hook()
@@ -365,10 +362,6 @@ class EditorWindow:
         else:
             self.update_menu_state('options', '*ine*umbers', 'disabled')
 
-        # After all other initialization, add this:
-        self._last_fold_update = 0
-        self._content_hash = None
-        self._schedule_fold_update()
 
     def handle_winconfig(self, event=None):
         self.set_width()
@@ -1616,11 +1609,6 @@ class EditorWindow:
         # since the folding functionality is integrated with it
         if self.line_numbers is None and self.__class__.__name__ == 'EditorWindow':
             self.line_numbers = self.LineNumbers(self)
-            
-        # Show the sidebar if it's not already shown
-        if self.line_numbers and not self.line_numbers.is_shown:
-            self.line_numbers.show_sidebar()
-            
         # Add menu option and keyboard shortcut for folding
         self.text.bind("<<toggle-code-folding>>", self.toggle_code_folding_event)
 
@@ -1634,52 +1622,10 @@ class EditorWindow:
         self.toggle_line_numbers_event()
         return "break"
         
-    def print_foldable_regions(self):
-        """Find and print foldable regions in the current file."""
-        if not self.text or not self.ispythonsource(self.io.filename):
-            return
-        
-        try:
-            content = self.text.get('1.0', 'end')
-            # Import parser directly in the method to avoid circular imports
-            from idlelib.pyparse import Parser
-            regions = Parser.find_foldable_regions(content)
-            
-            if regions:
-                print(f"\nFoldable regions in {self.io.filename or 'untitled'}:")
-                for start, end, region_type in regions:
-                    print(f"  {region_type.capitalize()}: lines {start}-{end}")
-                self.foldable_regions = regions
-            
-            # Make sure line numbers are shown to display fold buttons
-            if self.line_numbers and not self.line_numbers.is_shown:
-                self.line_numbers.show_sidebar()
-                
-        except Exception as e:
-            print(f"Error finding foldable regions: {e}")
 
-    def _schedule_fold_update(self):
-        """Schedule periodic checks for content changes."""
-        if not hasattr(self, 'text') or not self.text:
-            return
+
+
         
-        # Check for changes every 2 seconds
-        current_time = time.time()
-        if current_time - getattr(self, '_last_fold_update', 0) > 2.0:
-            # Get current content
-            if hasattr(self, 'io') and self.io.filename and self.ispythonsource(self.io.filename):
-                content = self.text.get('1.0', 'end')
-                current_hash = hash(content)
-                
-                # Only update if content has changed
-                if current_hash != getattr(self, '_content_hash', None):
-                    self._content_hash = current_hash
-                    self._last_fold_update = current_time
-                    self.print_foldable_regions()
-        
-        # Schedule next check
-        if hasattr(self, 'text') and self.text:
-            self.text.after(1000, self._schedule_fold_update)  # Check every second
 
 # "line.col" -> line, as an int
 def index2line(index):
