@@ -291,6 +291,8 @@ class LineNumbers(BaseSideBar):
         self.folded_regions = {}
         self._last_fold_update = 0
         self._content_hash = None
+        # Add sync map to track which lines should be shown
+        self.sync_map = {}
         
         super().__init__(editwin)
 
@@ -334,14 +336,25 @@ class LineNumbers(BaseSideBar):
         # Configure cursor for the entire text widget
         self.sidebar_text.config(cursor='arrow')
         
-        # Bind click events for the sidebar
-        self.sidebar_text.bind("<Button-1>", self.sidebar_click_event)
-
+        # Set up global button press binding to update sidebar
+        self.text.bind("<ButtonRelease>", self.update_sidebar_after_click, add="+")
+        
         end = get_end_linenumber(self.text)
         self.update_sidebar_text(end)
 
         return self.sidebar_text
-
+    
+    def update_sidebar_after_click(self, event=None):
+        """Update sidebar after any button click in the main text widget."""
+        # Short delay to allow text widget to complete its operations
+        self.text.after(50, self.refresh_sidebar)
+        return None  # Allow other bindings to process the event
+    
+    def refresh_sidebar(self):
+        """Force a complete refresh of the sidebar."""
+        end = get_end_linenumber(self.text)
+        self.update_sidebar_text(end)
+    
     def grid(self):
         self.sidebar_text.grid(row=1, column=0, sticky=tk.NSEW)
 
@@ -363,6 +376,7 @@ class LineNumbers(BaseSideBar):
     def update_sidebar_text(self, end):
         """
         Update the sidebar text with line numbers and fold indicators.
+        Only show line numbers for lines that are actually visible.
         """
         if end == self.prev_end and not hasattr(self, 'foldable_regions'):
             return
@@ -382,7 +396,6 @@ class LineNumbers(BaseSideBar):
 
         # Create a dictionary of line numbers that start foldable regions
         foldable_starts = {}
-        # Only process foldable regions if they exist and are valid
         if hasattr(self, 'foldable_regions') and isinstance(self.foldable_regions, list):
             for start, end_line, region_type in self.foldable_regions:
                 region_id = f"{start}:{end_line}"
@@ -392,14 +405,22 @@ class LineNumbers(BaseSideBar):
         with temp_enable_text_widget(self.sidebar_text):
             self.sidebar_text.delete("1.0", "end")
             
-            # Add line numbers with fold indicators
+            # Create a list of visible line numbers only
+            visible_lines = []
             for line_num in range(1, end + 1):
+                # Check if this line is actually visible (not folded/elided)
+                line_info = self.text.dlineinfo(f"{line_num}.0")
+                if line_info is not None:  # Line is visible
+                    visible_lines.append(line_num)
+            
+            # Add line numbers with fold indicators only for visible lines
+            for line_num in visible_lines:
                 if line_num in foldable_starts:
                     is_folded, region_id, region_type, end_line = foldable_starts[line_num]
                     fold_indicator = "[-]" if is_folded else "[+]"
                     tag = "folded" if is_folded else "foldable"
                     
-                    # Insert fold indicator with button-like styling - make it more noticeable
+                    # Insert fold indicator with button-like styling
                     button_index = f"fold-{line_num}"
                     self.sidebar_text.insert("end", f"{fold_indicator}", (tag, "fold_button", button_index))
                     self.sidebar_text.insert("end", f" {line_num}\n", tag)
@@ -408,7 +429,7 @@ class LineNumbers(BaseSideBar):
                     line_tag = f"line-{line_num}"
                     self.sidebar_text.tag_add(line_tag, f"end-1l linestart", f"end-1c")
                     
-                    # Pass the exact region boundaries to toggle_fold
+                    # Bind click events directly to this region's tag
                     self.sidebar_text.tag_bind(button_index, "<Button-1>", 
                                              lambda e, rid=region_id, s=line_num, el=end_line: 
                                              self.toggle_fold(rid, s, el))
@@ -419,41 +440,6 @@ class LineNumbers(BaseSideBar):
                     self.sidebar_text.insert("end", f"    {line_num}\n", "linenumber")
 
         self.prev_end = end
-    
-    def sidebar_click_event(self, event):
-        """Handle click events in the sidebar."""
-        # Get the text index at the click position
-        index = self.sidebar_text.index(f"@{event.x},{event.y}")
-        line_num = int(float(index))
-        
-        # Get tags at the click position
-        tags = self.sidebar_text.tag_names(index)
-        
-        print(f"Click detected at line {line_num}, tags: {tags}")
-        
-        # First check for direct fold button clicks
-        for tag in tags:
-            if tag.startswith("fold-"):
-                # This is a direct tag we added to the fold button
-                clicked_line = int(tag.split("-")[1])
-                for start, end, region_type in self.foldable_regions:
-                    if start == clicked_line:
-                        region_id = f"{start}:{end}"
-                        print(f"Toggling fold for region {region_id}")
-                        self.toggle_fold(region_id, start, end)
-                        return "break"
-        
-        # Next check for clicks on fold-related tags
-        if "fold_button" in tags or "foldable" in tags or "folded" in tags:
-            # Find the corresponding foldable region
-            for start, end, region_type in self.foldable_regions:
-                if line_num == start:
-                    region_id = f"{start}:{end}"
-                    print(f"Toggling fold for region {region_id}")
-                    self.toggle_fold(region_id, start, end)
-                    return "break"
-        
-        return None
 
     def toggle_fold(self, region_id, start, end):
         """Toggle folding for a region."""
@@ -484,8 +470,128 @@ class LineNumbers(BaseSideBar):
             # Make sure the elide property is set
             self.text.tag_configure(tag_name, elide=True)
         
-        # Update the sidebar display
-        self.update_sidebar_text(get_end_linenumber(self.text))
+        # Update sidebar with a short delay to ensure fold operation completes
+        self.text.after(10, self.update_sidebar_with_folding)
+    
+    def update_sidebar_with_folding(self):
+        """Update sidebar taking into account folded regions."""
+        # Create a list of all lines
+        total_lines = int(self.text.index('end-1c').split('.')[0])
+        
+        # Build the sync map - maps actual line numbers to display positions
+        self.sync_map = {}
+        display_pos = 0
+        
+        for line_num in range(1, total_lines + 1):
+            # Check if this line should be skipped (is inside a folded region)
+            should_skip = False
+            for region_id, tag_name in self.folded_regions.items():
+                start, end = map(int, region_id.split(':'))
+                # Skip lines inside folded regions (but not the fold start line)
+                if line_num > start and line_num <= end:
+                    should_skip = True
+                    break
+            
+            if not should_skip:
+                display_pos += 1
+                self.sync_map[line_num] = display_pos
+        
+        # Now rebuild the sidebar based on sync_map
+        with temp_enable_text_widget(self.sidebar_text):
+            self.sidebar_text.delete("1.0", "end")
+            
+            for line_num, pos in sorted(self.sync_map.items()):
+                # Check if it's a fold point
+                is_fold_point = False
+                for start, end_line, region_type in self.foldable_regions:
+                    if start == line_num:
+                        region_id = f"{start}:{end_line}"
+                        is_folded = region_id in self.folded_regions
+                        fold_indicator = "[-]" if is_folded else "[+]"
+                        tag = "folded" if is_folded else "foldable"
+                        
+                        # Insert fold indicator with button-like styling
+                        button_index = f"fold-{line_num}"
+                        self.sidebar_text.insert("end", f"{fold_indicator}", (tag, "fold_button", button_index))
+                        self.sidebar_text.insert("end", f" {line_num}\n", tag)
+                        
+                        # Tag and bind clicks
+                        line_tag = f"line-{line_num}"
+                        self.sidebar_text.tag_add(line_tag, f"end-1l linestart", f"end-1c")
+                        
+                        self.sidebar_text.tag_bind(button_index, "<Button-1>", 
+                                                 lambda e, rid=region_id, s=start, el=end_line: 
+                                                 self.toggle_fold(rid, s, el))
+                        self.sidebar_text.tag_bind(line_tag, "<Button-1>", 
+                                                 lambda e, rid=region_id, s=start, el=end_line: 
+                                                 self.toggle_fold(rid, s, el))
+                        is_fold_point = True
+                        break
+                
+                if not is_fold_point:
+                    self.sidebar_text.insert("end", f"    {line_num}\n", "linenumber")
+        
+        # Adjust the view to keep in sync with text widget
+        y_view = self.text.yview()[0]
+        self.sidebar_text.yview_moveto(y_view)
+        
+        # Remember the total line count
+        self.prev_end = total_lines
+
+    def update_sidebar_text(self, end):
+        """Update the sidebar text, accounting for folded regions."""
+        # Check if we need a width update
+        width_difference = len(str(end)) - len(str(self.prev_end))
+        if width_difference:
+            cur_width = int(float(self.sidebar_text['width']))
+            new_width = cur_width + width_difference
+            self.sidebar_text['width'] = self._sidebar_width_type(new_width)
+        
+        # If folding is active, use the special update method
+        if hasattr(self, 'folded_regions') and self.folded_regions:
+            self.update_sidebar_with_folding()
+        else:
+            # For normal (non-folded) operation, use the original logic
+            # ...existing code for normal line numbers...
+            
+            # Create a dictionary of line numbers that start foldable regions
+            foldable_starts = {}
+            if hasattr(self, 'foldable_regions') and isinstance(self.foldable_regions, list):
+                for start, end_line, region_type in self.foldable_regions:
+                    region_id = f"{start}:{end_line}"
+                    is_folded = region_id in self.folded_regions
+                    foldable_starts[start] = (is_folded, region_id, region_type, end_line)
+
+            with temp_enable_text_widget(self.sidebar_text):
+                self.sidebar_text.delete("1.0", "end")
+                
+                # Add line numbers with fold indicators
+                for line_num in range(1, end + 1):
+                    if line_num in foldable_starts:
+                        is_folded, region_id, region_type, end_line = foldable_starts[line_num]
+                        fold_indicator = "[-]" if is_folded else "[+]"
+                        tag = "folded" if is_folded else "foldable"
+                        
+                        # Insert fold indicator with button-like styling
+                        button_index = f"fold-{line_num}"
+                        self.sidebar_text.insert("end", f"{fold_indicator}", (tag, "fold_button", button_index))
+                        self.sidebar_text.insert("end", f" {line_num}\n", tag)
+                        
+                        # Tag the entire line with a unique tag for this region
+                        line_tag = f"line-{line_num}"
+                        self.sidebar_text.tag_add(line_tag, f"end-1l linestart", f"end-1c")
+                        
+                        # Bind click events directly to this region's tag
+                        self.sidebar_text.tag_bind(button_index, "<Button-1>", 
+                                                lambda e, rid=region_id, s=line_num, el=end_line: 
+                                                self.toggle_fold(rid, s, el))
+                        self.sidebar_text.tag_bind(line_tag, "<Button-1>", 
+                                                lambda e, rid=region_id, s=line_num, el=end_line: 
+                                                self.toggle_fold(rid, s, el))
+                    else:
+                        self.sidebar_text.insert("end", f"    {line_num}\n", "linenumber")
+
+        self.prev_end = end
 
     def find_foldable_regions(self):
         """Find foldable regions in the current file."""
