@@ -362,6 +362,8 @@ class EditorWindow:
         else:
             self.update_menu_state('options', '*ine*umbers', 'disabled')
 
+
+
     def handle_winconfig(self, event=None):
         self.set_width()
 
@@ -1601,6 +1603,54 @@ class EditorWindow:
             menu_label = "Hide"
         self.update_menu_label(menu='options', index='*ine*umbers',
                                label=f'{menu_label} Line Numbers')
+
+    def setup_code_folding(self):
+        """Set up code folding if in a Python file."""
+        # We just need to ensure line numbers sidebar is enabled
+        # since the folding functionality is integrated with it
+        if self.line_numbers is None and self.__class__.__name__ == 'EditorWindow':
+            self.line_numbers = self.LineNumbers(self)
+        # Add menu option and keyboard shortcut for folding
+        self.text.bind("<<toggle-code-folding>>", self.toggle_code_folding_event)
+
+    def toggle_code_folding_event(self, event=None):
+        """Toggle code folding via the line numbers sidebar."""
+        if self.line_numbers is None:
+            return
+        
+        # Since folding is now part of LineNumbers, toggling code folding
+        # just shows/hides the line numbers sidebar
+        self.toggle_line_numbers_event()
+        return "break"
+        
+
+
+
+        
+
+    def setup_code_folding(self):
+        """Set up code folding if in a Python file."""
+        # We just need to ensure line numbers sidebar is enabled
+        # since the folding functionality is integrated with it
+        if self.line_numbers is None and self.__class__.__name__ == 'EditorWindow':
+            self.line_numbers = self.LineNumbers(self)
+        # Add menu option and keyboard shortcut for folding
+        self.text.bind("<<toggle-code-folding>>", self.toggle_code_folding_event)
+
+    def toggle_code_folding_event(self, event=None):
+        """Toggle code folding via the line numbers sidebar."""
+        if self.line_numbers is None:
+            return
+        
+        # Since folding is now part of LineNumbers, toggling code folding
+        # just shows/hides the line numbers sidebar
+        self.toggle_line_numbers_event()
+        return "break"
+        
+
+
+
+        
 
 # "line.col" -> line, as an int
 def index2line(index):

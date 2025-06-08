@@ -1,3 +1,4 @@
+
 """Define partial Python code Parser used by editor and hyperparser.
 
 Instances of ParseMap are used with str.translate.
@@ -11,6 +12,7 @@ _closere - line that must be followed by dedent.
 _chew_ordinaryre - non-special characters.
 """
 import re
+import ast
 
 # Reason last statement is continued (or C_NONE if it's not).
 (C_NONE, C_BACKSLASH, C_STRING_FIRST_LINE,
@@ -582,6 +584,52 @@ class Parser:
         """
         self._study2()
         return self.stmt_bracketing
+
+    def find_foldable_regions(code: str):
+        """
+        Parse code and return a list of foldable regions.
+        Each region is a tuple: (start_lineno, end_lineno, node_type)
+        node_type is one of: 'function', 'class', 'loop', 'conditional'
+        """
+        try:
+            tree = ast.parse(code)
+        except Exception:
+            return Exception
+            return Exception("Failed to parse code")
+
+        regions = []
+
+        def visit(node):
+            # Functions
+            if isinstance(node, ast.FunctionDef) or isinstance(node, ast.AsyncFunctionDef):
+                if hasattr(node, 'body') and node.body:
+                    start = node.lineno
+                    end = max(getattr(n, 'end_lineno', n.lineno) for n in node.body)
+                    regions.append((start, end, 'function'))
+            # Classes
+            elif isinstance(node, ast.ClassDef):
+                if hasattr(node, 'body') and node.body:
+                    start = node.lineno
+                    end = max(getattr(n, 'end_lineno', n.lineno) for n in node.body)
+                    regions.append((start, end, 'class'))
+            # Loops
+            elif isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
+                if hasattr(node, 'body') and node.body:
+                    start = node.lineno
+                    end = max(getattr(n, 'end_lineno', n.lineno) for n in node.body)
+                    regions.append((start, end, 'loop'))
+            # Conditionals
+            elif isinstance(node, ast.If):
+                if hasattr(node, 'body') and node.body:
+                    start = node.lineno
+                    end = max(getattr(n, 'end_lineno', n.lineno) for n in node.body + getattr(node, 'orelse', []))
+                    regions.append((start, end, 'conditional'))
+            # Recursively visit children
+            for child in ast.iter_child_nodes(node):
+                visit(child)
+
+        visit(tree)
+        return regions
 
 
 if __name__ == '__main__':
