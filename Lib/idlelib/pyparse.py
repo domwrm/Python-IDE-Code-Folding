@@ -1,3 +1,4 @@
+
 """Define partial Python code Parser used by editor and hyperparser.
 
 Instances of ParseMap are used with str.translate.
@@ -593,7 +594,7 @@ class Parser:
         try:
             tree = ast.parse(code)
         except Exception:
-            return Exception
+            return Exception("Failed to parse code")
 
         regions = []
 
