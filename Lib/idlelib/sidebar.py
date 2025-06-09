@@ -302,12 +302,17 @@ class LineNumbers(BaseSideBar):
         self.editwin.per.insertfilterafter(end_line_delegator,
                                            after=self.editwin.undo)
         
-        # Schedule initial fold detection if this is a Python file
+        # Schedule initial fold detection - also for new files
         if hasattr(self.editwin, 'io') and hasattr(self.editwin, 'ispythonsource'):
+            # For files with a filename, check if it's Python
             if hasattr(self.editwin.io, 'filename') and self.editwin.io.filename:
                 if self.editwin.ispythonsource(self.editwin.io.filename):
                     self.find_foldable_regions()
                     self._schedule_fold_update()
+            else:
+                # For new files, assume it's Python
+                self.find_foldable_regions()
+                self._schedule_fold_update()
 
     def init_widgets(self):
         _padx, pady = get_widget_padding(self.text)
@@ -595,15 +600,22 @@ class LineNumbers(BaseSideBar):
 
     def find_foldable_regions(self):
         """Find foldable regions in the current file."""
-        if not hasattr(self.editwin, 'io') or not self.editwin.io.filename:
+        # If we don't have io, we can't proceed
+        if not hasattr(self.editwin, 'io'):
             return
             
-        if not hasattr(self.editwin, 'ispythonsource') or not self.editwin.ispythonsource(self.editwin.io.filename):
-            return
+        # For existing files, check if it's a Python file
+        if hasattr(self.editwin.io, 'filename') and self.editwin.io.filename:
+            if not hasattr(self.editwin, 'ispythonsource') or not self.editwin.ispythonsource(self.editwin.io.filename):
+                return
         
         try:
             content = self.text.get('1.0', 'end')
             
+            # Skip empty files
+            if not content.strip():
+                return
+                
             # Use Parser.find_foldable_regions method
             regions = Parser.find_foldable_regions(content)
             
