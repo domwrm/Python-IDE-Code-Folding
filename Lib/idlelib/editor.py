@@ -359,7 +359,7 @@ class EditorWindow:
                                   'line-numbers-default', type='bool'):
                 self.toggle_line_numbers_event()
             text.bind("<<toggle-line-numbers>>", self.toggle_line_numbers_event)
-            text.bind("<<fold-all>>", self.fold_all_event)  # Add this line
+            text.bind("<<fold-all>>", self.fold_all_event) 
         else:
             self.update_menu_state('options', '*ine*umbers', 'disabled')
 
@@ -517,11 +517,9 @@ class EditorWindow:
         self.base_helpmenu_length = self.menudict['help'].index(END)
         self.reset_help_menu_entries()
 
-        # Add our custom menu item to the Options menu after filling menus
         options_menu = self.menudict['options']
         line_numbers_index = None
         
-        # Find the index of the line numbers menu item
         for i in range(options_menu.index('end') + 1):
             label = options_menu.entrycget(i, 'label')
             if 'Line Numbers' in label:
@@ -529,7 +527,6 @@ class EditorWindow:
                 break
         
         if line_numbers_index is not None:
-            # Insert "Fold All" right after the line numbers option
             options_menu.insert(line_numbers_index + 1, 'command',
                            label='Fold All',
                            command=lambda: self.text.event_generate('<<fold-all>>'),
@@ -1704,17 +1701,14 @@ class EditorWindow:
         if self.line_numbers is None:
             return "break"
             
-        # Make sure sidebar is shown - can't fold without it
+        # Make sure sidebar is shown so we can't fold without it
         if not self.line_numbers.is_shown:
             self.line_numbers.show_sidebar()
             self.update_menu_label('options', '*ine*umbers', 'Hide Line Numbers')
         
-        # Get all foldable regions and fold them all
         if hasattr(self.line_numbers, 'foldable_regions') and self.line_numbers.foldable_regions:
             for start, end, region_type in self.line_numbers.foldable_regions:
-                # Generate the region_id format that toggle_fold expects
                 region_id = f"{start}:{end}"
-                # Only fold regions that aren't already folded
                 if region_id not in self.line_numbers.folded_regions:
                     self.line_numbers.toggle_fold(region_id, start, end)
         
