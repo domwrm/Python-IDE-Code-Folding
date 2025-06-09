@@ -479,5 +479,70 @@ class PyParseTest(unittest.TestCase):
                 eq(bracketing(), test.bracket)
 
 
+class FindFoldableRegionsTest(unittest.TestCase):
+    def test_empty(self):
+        self.assertEqual(pyparse.Parser.find_foldable_regions(""), [])
+
+    def test_single_function(self):
+        code = "def foo():\n    pass\n"
+        regions = pyparse.Parser.find_foldable_regions(code)
+        self.assertEqual(regions, [(1, 2, 'function')])
+
+    def test_single_class(self):
+        code = "class Bar:\n    pass\n"
+        regions = pyparse.Parser.find_foldable_regions(code)
+        self.assertEqual(regions, [(1, 2, 'class')])
+
+    def test_nested_functions(self):
+        code = (
+            "def outer():\n"
+            "    def inner():\n"
+            "        pass\n"
+            "    return inner\n"
+        )
+        regions = pyparse.Parser.find_foldable_regions(code)
+        self.assertIn((1, 4, 'function'), regions)
+        self.assertIn((2, 3, 'function'), regions)
+
+    def test_loops(self):
+        code = (
+            "for i in range(10):\n"
+            "    print(i)\n"
+            "while True:\n"
+            "    break\n"
+        )
+        regions = pyparse.Parser.find_foldable_regions(code)
+        self.assertIn((1, 2, 'loop'), regions)
+        self.assertIn((3, 4, 'loop'), regions)
+
+    def test_conditionals(self):
+        code = (
+            "if x:\n"
+            "    print('yes')\n"
+            "else:\n"
+            "    print('no')\n"
+        )
+        regions = pyparse.Parser.find_foldable_regions(code)
+        self.assertEqual(regions, [(1, 4, 'conditional')])
+
+    def test_mixed(self):
+        code = (
+            "class C:\n"
+            "    def m(self):\n"
+            "        if True:\n"
+            "            for i in range(2):\n"
+            "                pass\n"
+        )
+        regions = pyparse.Parser.find_foldable_regions(code)
+        self.assertIn((1, 5, 'class'), regions)
+        self.assertIn((2, 5, 'function'), regions)
+        self.assertIn((3, 5, 'conditional'), regions)
+        self.assertIn((4, 5, 'loop'), regions)
+
+    def test_syntax_error(self):
+        code = "def bad(:\n    pass\n"
+        self.assertEqual(pyparse.Parser.find_foldable_regions(code), [])
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

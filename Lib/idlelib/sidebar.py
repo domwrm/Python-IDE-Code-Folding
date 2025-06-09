@@ -92,7 +92,17 @@ class BaseSideBar:
 
     def update_colors(self):
         """Update the sidebar text colors, usually after config changes."""
-        raise NotImplementedError
+        colors = idleConf.GetHighlight(idleConf.CurrentTheme(), 'linenumber')
+        foreground = colors['foreground']
+        background = colors['background']
+        self.sidebar_text.config(
+            fg=foreground, bg=background,
+            selectforeground=foreground, selectbackground=background,
+            inactiveselectbackground=background,
+        )
+        
+        # Also configure the foldable tag with the same colors
+        self.sidebar_text.tag_config('foldable', foreground=foreground)
 
     def grid(self):
         """Layout the widget, always using grid layout."""
@@ -338,7 +348,6 @@ class LineNumbers(BaseSideBar):
         
         # Set up global button press binding to update sidebar
         self.text.bind("<ButtonRelease>", self.update_sidebar_after_click, add="+")
-        
         end = get_end_linenumber(self.text)
         self.update_sidebar_text(end)
 
@@ -372,6 +381,7 @@ class LineNumbers(BaseSideBar):
             selectforeground=foreground, selectbackground=background,
             inactiveselectbackground=background,
         )
+        self.sidebar_text.tag_config('foldable', foreground=foreground)
 
     def update_sidebar_text(self, end):
         """
@@ -644,6 +654,25 @@ class LineNumbers(BaseSideBar):
         # Schedule next check
         if hasattr(self, 'text') and self.text:
             self.text.after(1000, self._schedule_fold_update)  # Check every second
+
+    def fold_handler(self, event):
+        """Handle click on the "+" fold indicator."""
+        index = self.sidebar_text.index(f"@{event.x},{event.y}")
+        line_num = int(float(index))
+        
+        code = self.text.get('1.0', 'end')
+        try:
+            foldable_regions = Parser.find_foldable_regions(code)
+            for start, end, region_type in foldable_regions:
+                if start == line_num:
+                    # For now, just print information about the fold - will implement actual folding later
+                    print(f"Folding {region_type} from line {start} to {end}")
+                    # Here we would implement the actual folding mechanism
+                    break
+        except Exception:
+            pass
+        
+        return "break"
 
 
 class WrappedLineHeightChangeDelegator(Delegator):
