@@ -316,7 +316,7 @@ class LineNumbers(BaseSideBar):
 
     def init_widgets(self):
         _padx, pady = get_widget_padding(self.text)
-        self.sidebar_text = tk.Text(self.parent, width=4, wrap=tk.NONE,
+        self.sidebar_text = tk.Text(self.parent, width=5, wrap=tk.NONE,  
                                     padx=2, pady=pady,
                                     borderwidth=0, highlightthickness=0)
         self.sidebar_text.config(state=tk.DISABLED)
@@ -329,14 +329,15 @@ class LineNumbers(BaseSideBar):
         self.sidebar_text.tag_config('linenumber', justify=tk.RIGHT)
         
         # Configure fold indicator tags - make them more visually distinct
-        self.sidebar_text.tag_config('foldable', foreground='blue')
-        self.sidebar_text.tag_config('folded', foreground='red')
+        # Use right justification for foldable and folded tags as well
+        self.sidebar_text.tag_config('foldable', foreground='blue', justify=tk.RIGHT)
+        self.sidebar_text.tag_config('folded', foreground='red', justify=tk.RIGHT)
         
-        # Make fold buttons very obvious
+        # Make fold buttons less obtrusive with smaller border
         self.sidebar_text.tag_config('fold_button', 
                                     background='#c0c0ff', 
                                     relief=tk.RAISED, 
-                                    borderwidth=2)
+                                    borderwidth=1)  # Reduced borderwidth from 2 to 1
         
         # Configure cursor for the entire text widget
         self.sidebar_text.config(cursor='arrow')
@@ -422,13 +423,15 @@ class LineNumbers(BaseSideBar):
             for line_num in visible_lines:
                 if line_num in foldable_starts:
                     is_folded, region_id, region_type, end_line = foldable_starts[line_num]
-                    fold_indicator = "[-]" if is_folded else "[+]"
+                    fold_indicator = "-" if is_folded else "+"
                     tag = "folded" if is_folded else "foldable"
                     
-                    # Insert fold indicator with button-like styling
+                    # Put the fold indicator first, then the line number
                     button_index = f"fold-{line_num}"
-                    self.sidebar_text.insert("end", f"{fold_indicator}", (tag, "fold_button", button_index))
-                    self.sidebar_text.insert("end", f" {line_num}\n", tag)
+                    # Add spaces to right-align the line numbers
+                    spaces = "  "
+                    self.sidebar_text.insert("end", fold_indicator, (tag, "fold_button", button_index))
+                    self.sidebar_text.insert("end", f"{spaces}{line_num}\n", tag)
                     
                     # Tag the entire line with a unique tag for this region
                     line_tag = f"line-{line_num}"
@@ -512,13 +515,15 @@ class LineNumbers(BaseSideBar):
                     if start == line_num:
                         region_id = f"{start}:{end_line}"
                         is_folded = region_id in self.folded_regions
-                        fold_indicator = "[-]" if is_folded else "[+]"
+                        fold_indicator = "-" if is_folded else "+"
                         tag = "folded" if is_folded else "foldable"
                         
-                        # Insert fold indicator with button-like styling
+                        # Put the fold indicator first, then the line number
                         button_index = f"fold-{line_num}"
-                        self.sidebar_text.insert("end", f"{fold_indicator}", (tag, "fold_button", button_index))
-                        self.sidebar_text.insert("end", f" {line_num}\n", tag)
+                        # Add spaces to right-align the line numbers
+                        spaces = "  "
+                        self.sidebar_text.insert("end", fold_indicator, (tag, "fold_button", button_index))
+                        self.sidebar_text.insert("end", f"{spaces}{line_num}\n", tag)
                         
                         # Tag and bind clicks
                         line_tag = f"line-{line_num}"
@@ -574,13 +579,14 @@ class LineNumbers(BaseSideBar):
                 for line_num in range(1, end + 1):
                     if line_num in foldable_starts:
                         is_folded, region_id, region_type, end_line = foldable_starts[line_num]
-                        fold_indicator = "[-]" if is_folded else "[+]"
+                        fold_indicator = "-" if is_folded else "+"  # Changed from "[-]" to "-" and "[+]" to "+"
                         tag = "folded" if is_folded else "foldable"
                         
-                        # Insert fold indicator with button-like styling
+                        # Always put the fold indicator on the left
                         button_index = f"fold-{line_num}"
-                        self.sidebar_text.insert("end", f"{fold_indicator}", (tag, "fold_button", button_index))
-                        self.sidebar_text.insert("end", f" {line_num}\n", tag)
+                        spaces = "  "  # Add spacing for alignment
+                        self.sidebar_text.insert("end", fold_indicator, (tag, "fold_button", button_index))
+                        self.sidebar_text.insert("end", f"{spaces}{line_num}\n", tag)
                         
                         # Tag the entire line with a unique tag for this region
                         line_tag = f"line-{line_num}"
