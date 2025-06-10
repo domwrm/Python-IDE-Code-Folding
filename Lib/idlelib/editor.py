@@ -359,6 +359,7 @@ class EditorWindow:
                                   'line-numbers-default', type='bool'):
                 self.toggle_line_numbers_event()
             text.bind("<<toggle-line-numbers>>", self.toggle_line_numbers_event)
+            text.bind("<<fold-all>>", self.fold_all_event) 
         else:
             self.update_menu_state('options', '*ine*umbers', 'disabled')
 
@@ -515,6 +516,21 @@ class EditorWindow:
                                              menu=self.recent_files_menu)
         self.base_helpmenu_length = self.menudict['help'].index(END)
         self.reset_help_menu_entries()
+
+        options_menu = self.menudict['options']
+        line_numbers_index = None
+        
+        for i in range(options_menu.index('end') + 1):
+            label = options_menu.entrycget(i, 'label')
+            if 'Line Numbers' in label:
+                line_numbers_index = i
+                break
+        
+        if line_numbers_index is not None:
+            options_menu.insert(line_numbers_index + 1, 'command',
+                           label='Fold All',
+                           command=lambda: self.text.event_generate('<<fold-all>>'),
+                           underline=0)
 
     def postwindowsmenu(self):
         """Callback to register window.
@@ -1680,27 +1696,22 @@ class EditorWindow:
         return "break"
         
 
-
-
-        
-
-    def setup_code_folding(self):
-        """Set up code folding if in a Python file."""
-        # We just need to ensure line numbers sidebar is enabled
-        # since the folding functionality is integrated with it
-        if self.line_numbers is None and self.__class__.__name__ == 'EditorWindow':
-            self.line_numbers = self.LineNumbers(self)
-        # Add menu option and keyboard shortcut for folding
-        self.text.bind("<<toggle-code-folding>>", self.toggle_code_folding_event)
-
-    def toggle_code_folding_event(self, event=None):
-        """Toggle code folding via the line numbers sidebar."""
+    def fold_all_event(self, event=None):
+        """Fold all foldable regions in the editor."""
         if self.line_numbers is None:
-            return
+            return "break"
+            
+        # Make sure sidebar is shown so we can't fold without it
+        if not self.line_numbers.is_shown:
+            self.line_numbers.show_sidebar()
+            self.update_menu_label('options', '*ine*umbers', 'Hide Line Numbers')
         
-        # Since folding is now part of LineNumbers, toggling code folding
-        # just shows/hides the line numbers sidebar
-        self.toggle_line_numbers_event()
+        if hasattr(self.line_numbers, 'foldable_regions') and self.line_numbers.foldable_regions:
+            for start, end, region_type in self.line_numbers.foldable_regions:
+                region_id = f"{start}:{end}"
+                if region_id not in self.line_numbers.folded_regions:
+                    self.line_numbers.toggle_fold(region_id, start, end)
+        
         return "break"
         
 
@@ -1868,6 +1879,8 @@ def _editor_window(parent):  # htest #
 if __name__ == '__main__':
     from unittest import main
     main('idlelib.idle_test.test_editor', verbosity=2, exit=False)
+
+
 
     from idlelib.idle_test.htest import run
     run(_editor_window)
