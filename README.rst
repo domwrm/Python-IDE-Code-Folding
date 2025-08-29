@@ -1,9 +1,11 @@
-# Code Folding for IDLE
+Our Contribution - Code Folding for IDLE
+-------------------
 
 This project adds a **code folding feature** to IDLE, Python’s built-in IDE.  
 Code folding lets users collapse and expand sections of code such as functions, classes, loops, and conditionals. This improves readability and navigation, especially in large files.
 
-## Features
+Features
+-------------------
 
 - Collapse and expand code blocks with visual markers (e.g., +/-)  
 - Keyboard shortcuts for folding/unfolding  
@@ -11,13 +13,14 @@ Code folding lets users collapse and expand sections of code such as functions, 
 - Works with undo/redo without breaking history  
 - Updates fold markers when files are opened or edited  
 
-## Why It Matters
+Why It Matters
+-------------------
 
 Most modern IDEs (e.g., VSCode, PyCharm) support code folding, but IDLE does not.  
 Adding this feature makes IDLE more usable for larger projects while keeping its beginner-friendly design.
 
 
-General Information
+General Information About CPython
 -------------------
 
 - Website: https://www.python.org
